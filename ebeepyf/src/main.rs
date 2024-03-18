@@ -1,11 +1,13 @@
 use anyhow::Context;
 use aya::{
     include_bytes_aligned,
+    maps::Stack,
     programs::{Xdp, XdpFlags},
     Ebpf,
 };
 use aya_log::EbpfLogger;
 use clap::Parser;
+use ebeepyf_common::PacketInfo;
 use log::{info, warn};
 use tokio::signal;
 
@@ -41,6 +43,8 @@ async fn main() -> Result<(), anyhow::Error> {
     program.load()?;
     program.attach(&opt.iface, XdpFlags::default())
         .context("failed to attach the XDP program with default flags - try changing XdpFlags::default() to XdpFlags::SKB_MODE")?;
+
+    let mut packet_queue = Stack::<_, PacketInfo>::try_from(bpf.map_mut("PACKET_QUEUE").unwrap())?;
 
     info!("Waiting for Ctrl-C...");
     signal::ctrl_c().await?;

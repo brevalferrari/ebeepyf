@@ -1,8 +1,14 @@
 #![no_std]
 #![no_main]
 
-use aya_ebpf::{bindings::xdp_action, macros::xdp, programs::XdpContext};
+use aya_ebpf::{
+    bindings::xdp_action,
+    macros::{map, xdp},
+    maps::Stack,
+    programs::XdpContext,
+};
 use aya_log_ebpf::info;
+use ebeepyf_common::{PacketInfo, IPP};
 
 use core::mem;
 use network_types::{
@@ -11,6 +17,9 @@ use network_types::{
     tcp::TcpHdr,
     udp::UdpHdr,
 };
+
+#[map]
+static mut PACKET_QUEUE: Stack<PacketInfo> = Stack::with_max_entries(5, 0);
 
 #[panic_handler]
 fn panic(_info: &core::panic::PanicInfo) -> ! {
@@ -25,7 +34,7 @@ pub fn ebeepyf(ctx: XdpContext) -> u32 {
     }
 }
 
-#[inline(always)] //
+#[inline(always)]
 fn ptr_at<T>(ctx: &XdpContext, offset: usize) -> Result<*const T, ()> {
     let start = ctx.data();
     let end = ctx.data_end();
@@ -39,7 +48,7 @@ fn ptr_at<T>(ctx: &XdpContext, offset: usize) -> Result<*const T, ()> {
 }
 
 fn try_ebeepyf(ctx: XdpContext) -> Result<u32, ()> {
-    let ethhdr: *const EthHdr = ptr_at(&ctx, 0)?; //
+    let ethhdr: *const EthHdr = ptr_at(&ctx, 0)?;
     match unsafe { (*ethhdr).ether_type } {
         EtherType::Ipv4 => {}
         _ => return Ok(xdp_action::XDP_PASS),
@@ -67,11 +76,17 @@ fn try_ebeepyf(ctx: XdpContext) -> Result<u32, ()> {
         _ => return Err(()),
     };
 
-    //
-    info!(
-        &ctx,
-        "{:X}:{}-{:X}:{}", source_addr, source_port, dest_addr, dest_port
-    );
+    if let Err(e) = unsafe {
+        PACKET_QUEUE.push(
+            &PacketInfo::new(
+                IPP::new(source_addr, source_port),
+                IPP::new(dest_addr, dest_port),
+            ),
+            0,
+        )
+    } {
+        info!(&ctx, "Dropped one packet ({})", e)
+    }
 
     Ok(xdp_action::XDP_PASS)
 }
