@@ -1,6 +1,11 @@
 #![no_std]
 #![no_main]
-
+#![deny(
+    clippy::all,
+    trivial_numeric_casts,
+    single_use_lifetimes,
+    unused_crate_dependencies
+)]
 use aya_ebpf::{
     bindings::xdp_action,
     macros::{map, xdp},
@@ -17,6 +22,8 @@ use network_types::{
     udp::UdpHdr,
 };
 
+/// Main PerfEventArray map where packet information is sent.
+/// The name of this map is used to get the map from the userspace program.
 #[map]
 static mut EBEEPYF: PerfEventArray<PacketInfo> = PerfEventArray::new(0);
 

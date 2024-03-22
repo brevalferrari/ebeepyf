@@ -1,13 +1,21 @@
 #![no_std]
+#![deny(
+    clippy::all,
+    trivial_numeric_casts,
+    single_use_lifetimes,
+    unused_crate_dependencies
+)]
 
 use derive_new::new;
 
+/// IP & port
 #[derive(new, Copy, Clone, Debug)]
 pub struct IPP {
     pub ip: [u8; 4],
     pub port: u16,
 }
 
+/// Basic information on a packet
 #[derive(new, Copy, Clone, Debug)]
 pub struct PacketInfo {
     pub src: IPP,

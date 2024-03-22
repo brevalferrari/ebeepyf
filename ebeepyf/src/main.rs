@@ -1,3 +1,9 @@
+#![deny(
+    clippy::all,
+    trivial_numeric_casts,
+    single_use_lifetimes,
+    unused_crate_dependencies
+)]
 use anyhow::Context;
 use aya::{
     include_bytes_aligned,
@@ -11,6 +17,7 @@ use clap::Parser;
 use ebeepyf_common::PacketInfo;
 use tokio::{signal, spawn};
 
+// Check the eBPF program! This name is the name of its map variable.
 const EVENTS_MAP_NAME: &str = "EBEEPYF";
 
 #[derive(Debug, Parser)]
@@ -46,9 +53,9 @@ async fn main() -> Result<(), anyhow::Error> {
 
     let mut events: AsyncPerfEventArray<_> = bpf
         .take_map(EVENTS_MAP_NAME)
-        .context("can't take map")?
+        .context("can't take map (this may result from using the wrong map name, check the variable name in your eBPF program)")?
         .try_into()
-        .context("can't convert map")?;
+        .context("can't convert map to a AsyncPerfEventArray")?;
 
     for cpu_id in online_cpus()? {
         let mut buf = events.open(cpu_id, Some(256))?;
@@ -65,7 +72,8 @@ async fn main() -> Result<(), anyhow::Error> {
 
     println!("Waiting for Ctrl-C...");
     signal::ctrl_c().await?;
-    println!("Exiting...");
+    println!();
+    print!("Bye bye");
 
     Ok(())
 }
