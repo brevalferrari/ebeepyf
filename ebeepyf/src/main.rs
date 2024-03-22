@@ -1,15 +1,16 @@
 use anyhow::Context;
 use aya::{
     include_bytes_aligned,
-    maps::Stack,
+    maps::{perf::Events, AsyncPerfEventArray},
     programs::{Xdp, XdpFlags},
+    util::online_cpus,
     Ebpf,
 };
-use aya_log::EbpfLogger;
+use bytes::BytesMut;
 use clap::Parser;
-use ebeepyf_common::PacketInfo;
-use log::{info, warn};
-use tokio::signal;
+use tokio::{signal, spawn};
+
+const EVENTS_MAP_NAME: &str = "EBEEPYF";
 
 #[derive(Debug, Parser)]
 struct Opt {
@@ -35,20 +36,37 @@ async fn main() -> Result<(), anyhow::Error> {
     let mut bpf = Ebpf::load(include_bytes_aligned!(
         "../../target/bpfel-unknown-none/release/ebeepyf"
     ))?;
-    if let Err(e) = EbpfLogger::init(&mut bpf) {
-        // This can happen if you remove all log statements from your eBPF program.
-        warn!("failed to initialize eBPF logger: {}", e);
-    }
-    let program: &mut Xdp = bpf.program_mut("ebeepyf").unwrap().try_into()?;
+
+    let program: &mut Xdp = bpf
+        .program_mut("ebeepyf")
+        .context("can't get program name")?
+        .try_into()?;
     program.load()?;
     program.attach(&opt.iface, XdpFlags::default())
         .context("failed to attach the XDP program with default flags - try changing XdpFlags::default() to XdpFlags::SKB_MODE")?;
 
-    let mut packet_queue = Stack::<_, PacketInfo>::try_from(bpf.map_mut("PACKET_QUEUE").unwrap())?;
+    let mut events: AsyncPerfEventArray<_> = bpf
+        .take_map(EVENTS_MAP_NAME)
+        .context("can't take map")?
+        .try_into()
+        .context("can't convert map")?;
 
-    info!("Waiting for Ctrl-C...");
+    for cpu_id in online_cpus()? {
+        let mut buf = events.open(cpu_id, Some(256))?;
+        spawn(async move {
+            loop {
+                let mut bufs = vec![BytesMut::with_capacity(128 * 4096); 10];
+                let Events { read, lost: _ } = buf.read_events(&mut bufs).await.unwrap();
+                bufs.iter().take(read).for_each(|bytes| {
+                    dbg!(bytes);
+                });
+            }
+        });
+    }
+
+    println!("Waiting for Ctrl-C...");
     signal::ctrl_c().await?;
-    info!("Exiting...");
+    println!("Exiting...");
 
     Ok(())
 }

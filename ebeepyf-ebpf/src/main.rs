@@ -4,10 +4,9 @@
 use aya_ebpf::{
     bindings::xdp_action,
     macros::{map, xdp},
-    maps::Stack,
+    maps::PerfEventArray,
     programs::XdpContext,
 };
-use aya_log_ebpf::info;
 use ebeepyf_common::{PacketInfo, IPP};
 
 use core::mem;
@@ -19,7 +18,7 @@ use network_types::{
 };
 
 #[map]
-static mut PACKET_QUEUE: Stack<PacketInfo> = Stack::with_max_entries(5, 0);
+static mut EBEEPYF: PerfEventArray<PacketInfo> = PerfEventArray::new(0);
 
 #[panic_handler]
 fn panic(_info: &core::panic::PanicInfo) -> ! {
@@ -76,17 +75,16 @@ fn try_ebeepyf(ctx: XdpContext) -> Result<u32, ()> {
         _ => return Err(()),
     };
 
-    if let Err(e) = unsafe {
-        PACKET_QUEUE.push(
+    unsafe {
+        EBEEPYF.output(
+            &ctx,
             &PacketInfo::new(
                 IPP::new(source_addr, source_port),
                 IPP::new(dest_addr, dest_port),
             ),
             0,
         )
-    } {
-        info!(&ctx, "Dropped one packet ({})", e)
-    }
+    };
 
     Ok(xdp_action::XDP_PASS)
 }
