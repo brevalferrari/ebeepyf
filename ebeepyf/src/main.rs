@@ -8,6 +8,7 @@ use aya::{
 };
 use bytes::BytesMut;
 use clap::Parser;
+use ebeepyf_common::PacketInfo;
 use tokio::{signal, spawn};
 
 const EVENTS_MAP_NAME: &str = "EBEEPYF";
@@ -21,8 +22,6 @@ struct Opt {
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
     let opt = Opt::parse();
-
-    env_logger::init();
 
     // This will include your eBPF object file as raw bytes at compile-time and load it at
     // runtime. This approach is recommended for most real-world use cases. If you would
@@ -55,11 +54,11 @@ async fn main() -> Result<(), anyhow::Error> {
         let mut buf = events.open(cpu_id, Some(256))?;
         spawn(async move {
             loop {
-                let mut bufs = vec![BytesMut::with_capacity(128 * 4096); 10];
+                let mut bufs = vec![BytesMut::zeroed(20); 10];
                 let Events { read, lost: _ } = buf.read_events(&mut bufs).await.unwrap();
-                bufs.iter().take(read).for_each(|bytes| {
-                    dbg!(bytes);
-                });
+                bufs.iter()
+                    .take(read)
+                    .for_each(|bytes| println!("{:?}", PacketInfo::try_from(bytes.as_ref())));
             }
         });
     }

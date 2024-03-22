@@ -79,8 +79,8 @@ fn try_ebeepyf(ctx: XdpContext) -> Result<u32, ()> {
         EBEEPYF.output(
             &ctx,
             &PacketInfo::new(
-                IPP::new(source_addr, source_port),
-                IPP::new(dest_addr, dest_port),
+                IPP::new(source_addr.to_be_bytes(), source_port),
+                IPP::new(dest_addr.to_be_bytes(), dest_port),
             ),
             0,
         )
