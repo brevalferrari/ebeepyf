@@ -7,21 +7,22 @@
 use anyhow::{Context, Error, Result};
 use aya::{
     include_bytes_aligned,
-    maps::{
-        perf::{AsyncPerfEventArrayBuffer, Events, PerfBufferError},
-        AsyncPerfEventArray, MapData,
-    },
+    maps::AsyncPerfEventArray,
     programs::{Xdp, XdpFlags},
     util::online_cpus,
     Ebpf,
 };
-use buplib::{FutureMutBup, FutureMutReceiver};
-use bytes::BytesMut;
+use buplib::FutureMutBup;
 use clap::Parser;
 use ebeepyf_common::PacketInfo;
-use rodio::{dynamic_mixer::mixer, source::SineWave, OutputStream, Source};
-use std::{borrow::BorrowMut, time::Duration};
+use rodio::{dynamic_mixer::mixer, OutputStream, Source};
+use std::time::Duration;
 use tokio::{signal, spawn};
+mod bupwants;
+use bupwants::PerfBufferReceiver;
+
+use crate::sources::per_ip_sine;
+mod sources;
 
 // Check the eBPF program! This name is the name of its map variable.
 const EVENTS_MAP_NAME: &str = "EBEEPYF";
@@ -74,7 +75,7 @@ async fn main() -> Result<(), anyhow::Error> {
             .expect("can't open perf buffer");
         let handle = handle.clone();
         spawn(async move {
-            FutureMutBup::new(PerfBufferReceiver(buf), &handle)
+            FutureMutBup::new(PerfBufferReceiver::new(buf), &handle)
                 .activate::<_, Error>(|packets: Vec<PacketInfo>| {
                     // print!("{} ", packets.len());
                     let len = packets.len();
@@ -82,12 +83,7 @@ async fn main() -> Result<(), anyhow::Error> {
                         .iter()
                         .fold(mixer(1, 48000), |(mixer, mix), p| {
                             mixer.add(
-                                SineWave::new(u8_to_freq(p.src.ip[0]))
-                                    .amplify(0.2)
-                                    .mix(SineWave::new(u8_to_freq(p.src.ip[1])).amplify(0.2))
-                                    .mix(SineWave::new(u8_to_freq(p.src.ip[2])).amplify(0.2))
-                                    .mix(SineWave::new(u8_to_freq(p.src.ip[3])).amplify(0.2))
-                                    .amplify((1f32 / ncpus) * (1f32 / len as f32)),
+                                per_ip_sine(p.src.ip).amplify((1f32 / ncpus) * (1f32 / len as f32)),
                             );
                             (mixer, mix)
                         })
@@ -105,35 +101,4 @@ async fn main() -> Result<(), anyhow::Error> {
     print!("Bye bye");
 
     Ok(())
-}
-
-fn u8_to_freq(n: u8) -> f32 {
-    n as f32 * ((BEEPS_FREQ_RANGE.1 - BEEPS_FREQ_RANGE.0) / u8::MAX as f32) + BEEPS_FREQ_RANGE.0
-}
-
-struct PerfBufferReceiver<T>(AsyncPerfEventArrayBuffer<T>)
-where
-    T: BorrowMut<MapData>;
-impl<T> FutureMutReceiver<Vec<PacketInfo>, PerfBufferError> for PerfBufferReceiver<T>
-where
-    T: BorrowMut<MapData>,
-{
-    fn accept(
-        &mut self,
-    ) -> impl std::future::Future<Output = std::prelude::v1::Result<Vec<PacketInfo>, PerfBufferError>>
-    {
-        let mut bufs = vec![BytesMut::zeroed(20); 10];
-        async move {
-            loop {
-                bufs.fill(BytesMut::zeroed(20));
-                let Events { read, lost: _ } = self.0.read_events(&mut bufs).await?;
-                return Ok::<Vec<PacketInfo>, PerfBufferError>(
-                    bufs.iter()
-                        .take(read)
-                        .map(|bytes| PacketInfo::try_from(bytes.as_ref()).unwrap())
-                        .collect(),
-                );
-            }
-        }
-    }
 }

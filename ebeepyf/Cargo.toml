@@ -5,7 +5,7 @@ edition = "2021"
 publish = false
 
 [dependencies]
-buplib = { version = "3.2.0", features = ["future"] }
+buplib = { version = "3.2.1", features = ["future"] }
 aya = { git = "https://github.com/aya-rs/aya", features = ["async_tokio"] }
 clap = { version = "4.1", features = ["derive"] }
 ebeepyf-common = { path = "../ebeepyf-common", features = ["user"] }
@@ -19,6 +19,7 @@ tokio = { version = "1.25", features = [
 ] }
 bytes = { version = "1.5.0", default-features = false }
 rodio = { version = "0.17.3", default-features = false }
+derive-new = "0.6.0"
 
 [[bin]]
 name = "ebeepyf"
