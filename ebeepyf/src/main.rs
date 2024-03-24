@@ -4,8 +4,6 @@
     single_use_lifetimes,
     unused_crate_dependencies
 )]
-use std::{borrow::BorrowMut, f32::consts::PI, time::Duration};
-
 use anyhow::{Context, Error, Result};
 use aya::{
     include_bytes_aligned,
@@ -21,16 +19,13 @@ use buplib::{FutureMutBup, FutureMutReceiver};
 use bytes::BytesMut;
 use clap::Parser;
 use ebeepyf_common::PacketInfo;
-use rodio::{
-    dynamic_mixer::mixer,
-    source::{Empty, Mix, SineWave},
-    OutputStream, Source,
-};
+use rodio::{dynamic_mixer::mixer, source::SineWave, OutputStream, Source};
+use std::{borrow::BorrowMut, time::Duration};
 use tokio::{signal, spawn};
 
 // Check the eBPF program! This name is the name of its map variable.
 const EVENTS_MAP_NAME: &str = "EBEEPYF";
-const HEARING_RANGE: (f32, f32) = (31f32, 19000f32);
+const BEEPS_FREQ_RANGE: (f32, f32) = (31f32, 10000f32);
 
 #[derive(Debug, Parser)]
 struct Opt {
@@ -71,7 +66,9 @@ async fn main() -> Result<(), anyhow::Error> {
         .try_into()
         .context("can't convert map to a AsyncPerfEventArray")?;
 
-    for cpu_id in online_cpus()? {
+    let cpus = online_cpus()?;
+    let ncpus = cpus.len() as f32;
+    for cpu_id in cpus {
         let buf = events
             .open(cpu_id, Some(256))
             .expect("can't open perf buffer");
@@ -79,10 +76,19 @@ async fn main() -> Result<(), anyhow::Error> {
         spawn(async move {
             FutureMutBup::new(PerfBufferReceiver(buf), &handle)
                 .activate::<_, Error>(|packets: Vec<PacketInfo>| {
+                    // print!("{} ", packets.len());
+                    let len = packets.len();
                     packets
                         .iter()
                         .fold(mixer(1, 48000), |(mixer, mix), p| {
-                            mixer.add(SineWave::new(*p.src.ip.last().unwrap() as f32));
+                            mixer.add(
+                                SineWave::new(u8_to_freq(p.src.ip[0]))
+                                    .amplify(0.2)
+                                    .mix(SineWave::new(u8_to_freq(p.src.ip[1])).amplify(0.2))
+                                    .mix(SineWave::new(u8_to_freq(p.src.ip[2])).amplify(0.2))
+                                    .mix(SineWave::new(u8_to_freq(p.src.ip[3])).amplify(0.2))
+                                    .amplify((1f32 / ncpus) * (1f32 / len as f32)),
+                            );
                             (mixer, mix)
                         })
                         .1
@@ -101,6 +107,10 @@ async fn main() -> Result<(), anyhow::Error> {
     Ok(())
 }
 
+fn u8_to_freq(n: u8) -> f32 {
+    n as f32 * ((BEEPS_FREQ_RANGE.1 - BEEPS_FREQ_RANGE.0) / u8::MAX as f32) + BEEPS_FREQ_RANGE.0
+}
+
 struct PerfBufferReceiver<T>(AsyncPerfEventArrayBuffer<T>)
 where
     T: BorrowMut<MapData>;
@@ -117,14 +127,12 @@ where
             loop {
                 bufs.fill(BytesMut::zeroed(20));
                 let Events { read, lost: _ } = self.0.read_events(&mut bufs).await?;
-                if read != 0 {
-                    return Ok::<Vec<PacketInfo>, PerfBufferError>(
-                        bufs.iter()
-                            .take(read)
-                            .map(|bytes| PacketInfo::try_from(bytes.as_ref()).unwrap())
-                            .collect(),
-                    );
-                }
+                return Ok::<Vec<PacketInfo>, PerfBufferError>(
+                    bufs.iter()
+                        .take(read)
+                        .map(|bytes| PacketInfo::try_from(bytes.as_ref()).unwrap())
+                        .collect(),
+                );
             }
         }
     }
