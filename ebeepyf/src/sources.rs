@@ -1,8 +1,12 @@
-use rodio::{source::SineWave, Source};
-
 use crate::BEEPS_FREQ_RANGE;
+use rodio::{
+    source::{Amplify, Mix, SineWave},
+    Source,
+};
+type SineMix =
+    Mix<Mix<Mix<Amplify<SineWave>, Amplify<SineWave>>, Amplify<SineWave>>, Amplify<SineWave>>;
 
-pub(super) fn per_ip_sine(ip: [u8; 4]) -> impl Source + Iterator<Item = f32> {
+pub(super) fn per_ip_sine(ip: [u8; 4]) -> SineMix {
     SineWave::new(u8_to_freq(ip[0]))
         .amplify(0.2)
         .mix(SineWave::new(u8_to_freq(ip[1])).amplify(0.2))

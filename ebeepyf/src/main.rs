@@ -26,7 +26,9 @@ mod sources;
 
 // Check the eBPF program! This name is the name of its map variable.
 const EVENTS_MAP_NAME: &str = "EBEEPYF";
-const BEEPS_FREQ_RANGE: (f32, f32) = (31f32, 10000f32);
+const BEEPS_FREQ_RANGE: (f32, f32) = (31f32, 20000f32);
+const SAMPLE_RATE: u32 = 8000;
+const BEEP_DURATION: Duration = Duration::from_millis(50);
 
 #[derive(Debug, Parser)]
 struct Opt {
@@ -81,14 +83,14 @@ async fn main() -> Result<(), anyhow::Error> {
                     let len = packets.len();
                     packets
                         .iter()
-                        .fold(mixer(1, 48000), |(mixer, mix), p| {
+                        .fold(mixer(1, SAMPLE_RATE), |(mixer, mix), p| {
                             mixer.add(
                                 per_ip_sine(p.src.ip).amplify((1f32 / ncpus) * (1f32 / len as f32)),
                             );
                             (mixer, mix)
                         })
                         .1
-                        .take_duration(Duration::from_millis(100))
+                        .take_duration(BEEP_DURATION)
                 })
                 .await
                 .unwrap();

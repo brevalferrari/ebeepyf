@@ -23,16 +23,14 @@ where
     {
         let mut bufs = vec![BytesMut::zeroed(20); 10];
         async move {
-            loop {
-                bufs.fill(BytesMut::zeroed(20));
-                let Events { read, lost: _ } = self.0.read_events(&mut bufs).await?;
-                return Ok::<Vec<PacketInfo>, PerfBufferError>(
-                    bufs.iter()
-                        .take(read)
-                        .map(|bytes| PacketInfo::try_from(bytes.as_ref()).unwrap())
-                        .collect(),
-                );
-            }
+            bufs.fill(BytesMut::zeroed(20));
+            let Events { read, lost: _ } = self.0.read_events(&mut bufs).await?;
+            return Ok::<Vec<PacketInfo>, PerfBufferError>(
+                bufs.iter()
+                    .take(read)
+                    .map(|bytes| PacketInfo::try_from(bytes.as_ref()).unwrap())
+                    .collect(),
+            );
         }
     }
 }

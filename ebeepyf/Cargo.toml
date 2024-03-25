@@ -5,7 +5,7 @@ edition = "2021"
 publish = false
 
 [dependencies]
-buplib = { version = "3.2.1", features = ["future"] }
+buplib = { version = "3.3.0", features = ["future"] }
 aya = { git = "https://github.com/aya-rs/aya", features = ["async_tokio"] }
 clap = { version = "4.1", features = ["derive"] }
 ebeepyf-common = { path = "../ebeepyf-common", features = ["user"] }
